@@ -20,5 +20,5 @@ CREATE TABLE `stars` (
   `id`      INTEGER NOT NULL auto_increment PRIMARY KEY,
   `user_id` INTEGER NOT NULL,
   `post_id` INTEGER NOT NULL,
-   INDEX `start_index` (`user_id`, `post_id`)
+   INDEX `post_id_idx` (`post_id`)
 ) CHARACTER SET utf8 ENGINE=InnoDB;
