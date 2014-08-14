@@ -4,6 +4,8 @@ require 'sinatra/url_for'
 require 'erubis'
 require 'mysql2-cs-bind'
 require 'bcrypt'
+require 'json'
+require 'redis'
 
 require 'ext/object/blank'
 require 'formvalidator/lite'
@@ -23,8 +25,7 @@ helpers do
       },
       :redis => {
         :host => '127.0.0.1',
-        :port => '6379',
-        :db   => 1,
+        :port => 6379,
       },
       :recent_posts_limit => 100,
     }
@@ -44,15 +45,51 @@ helpers do
     )
   end
 
-  def redis
+  def redis_connection
       config =load_config[:redis]
       return $redis if $redis
 
       $redis = Redis.new(
        :host => config[:host],
        :port => config[:port],
-       :db   => config[:db],
       )
+  end
+
+  def recent_posts_redis
+      redis = redis_connection
+      recent_post_redis = redis.get("recent_post")
+      recent_post_redis = recent_post_redis ? JSON.parse(recent_post_redis) : recent_posts
+
+      recent_post_redis
+  end
+
+  def recent_posts_set_redis
+
+      recent_posts_limit = load_config[:recent_posts_limit]
+      mysql = connection
+      posts = mysql.xquery(
+          "SELECT posts.id as id, posts.user_id as user_id, posts.content as content, users.username as username FROM posts INNER JOIN users ON users.id = posts.user_id ORDER BY posts.created_at DESC LIMIT #{recent_posts_limit}"
+      )
+
+      recent_posts = []
+      posts.each do |post|
+          stars_count = mysql.xquery(
+              'SELECT COUNT(id) as count FROM stars WHERE post_id=?',
+              post['id']
+          )
+
+          recent_posts.push({
+              'id'       => post['id'],
+              'username' => post['username'],
+              'stars'    => stars_count.first['count'],
+              'headline' => post['content'].slice(0, 30 )
+          })
+      end
+
+      redis = redis_connection
+      redis.set('recent_post', recent_posts.to_json)
+
+      return 1
   end
 
   def recent_posts
@@ -94,7 +131,7 @@ before do
 end
 
 get '/' do
-  @recent_posts = recent_posts
+  @recent_posts = recent_posts_redis
   @errors       = Hash.new {|h,k| h[k] = {}}
 
   erb :index
@@ -131,6 +168,7 @@ post '/post' do
     user_id, content
   )
   post_id = mysql.last_id
+  recent_posts_set_redis
 
   redirect to("/post/#{post_id}")
 end
@@ -149,7 +187,7 @@ get '/post/:id' do
 
   stars_count = 0
   stars_count = mysql.xquery(
-    'SELECT COUNT(*) as count FROM stars WHERE post_id=?',
+    'SELECT COUNT(id) as count FROM stars WHERE post_id=?',
     post['id']
   ).first['count']
 
@@ -160,7 +198,7 @@ get '/post/:id' do
     'stars'      => stars_count,
     'created_at' => post['created_at']
   }
-  @recent_posts = recent_posts
+  @recent_posts = recent_posts_redis
 
   erb :post
 end
