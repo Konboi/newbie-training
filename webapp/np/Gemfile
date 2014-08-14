@@ -10,6 +10,7 @@ gem 'mysql2-cs-bind'
 gem 'bcrypt'
 gem 'rack_csrf'
 gem 'redis'
+gem 'hiredis'
 gem 'unicorn'
 
 group :test do

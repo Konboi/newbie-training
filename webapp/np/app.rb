@@ -6,6 +6,7 @@ require 'mysql2-cs-bind'
 require 'bcrypt'
 require 'json'
 require 'redis'
+require 'hiredis'
 
 require 'ext/object/blank'
 require 'formvalidator/lite'
@@ -52,6 +53,7 @@ helpers do
       $redis = Redis.new(
        :host => config[:host],
        :port => config[:port],
+       :driver => :hiredis
       )
   end
 
