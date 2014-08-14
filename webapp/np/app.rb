@@ -21,6 +21,11 @@ helpers do
         :password => '',
         :dbname   => 'test',
       },
+      :redis => {
+        :host => '127.0.0.1',
+        :port => '6379',
+        :db   => 1,
+      },
       :recent_posts_limit => 100,
     }
   end
@@ -39,6 +44,17 @@ helpers do
     )
   end
 
+  def redis
+      config =load_config[:redis]
+      return $redis if $redis
+
+      $redis = Redis.new(
+       :host => config[:host],
+       :port => config[:port],
+       :db   => config[:db],
+      )
+  end
+
   def recent_posts
     recent_posts_limit = load_config[:recent_posts_limit]
 
@@ -46,26 +62,19 @@ helpers do
     # created_at にindexはる
     mysql = connection
     posts = mysql.xquery(
-      "SELECT id, user_id, content FROM posts ORDER BY created_at DESC LIMIT #{recent_posts_limit}"
+      "SELECT posts.id as id  , posts.user_id as user_id, posts.content as content, users.username as username FROM posts INNER JOIN users ON users.id = posts.user_id ORDER BY posts.created_at DESC LIMIT #{recent_posts_limit}"
     )
 
     recent_posts = []
     posts.each do |post|
-      user = mysql.xquery(
-        'SELECT username FROM users WHERE id=?',
-        post['user_id']
-      ).first
-
-      stars_count = 0
-      stars = mysql.xquery(
-        'SELECT * FROM stars WHERE post_id=?',
+      stars_count = mysql.xquery(
+        'SELECT COUNT(*) FROM stars WHERE post_id=?',
         post['id']
       )
-      stars.each { stars_count += 1 }
 
       recent_posts.push({
         'id'       => post['id'],
-        'username' => user['username'],
+        'username' => post['username'],
         'stars'    => stars_count,
         'headline' => post['content'].slice(0, 30)
       })
