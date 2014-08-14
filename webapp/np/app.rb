@@ -73,15 +73,12 @@ helpers do
 
       recent_posts = []
       posts.each do |post|
-          stars_count = mysql.xquery(
-              'SELECT COUNT(id) as count FROM stars WHERE post_id=?',
-              post['id']
-          )
+          stars_count = get_star(post['id'])
 
           recent_posts.push({
               'id'       => post['id'],
               'username' => post['username'],
-              'stars'    => stars_count.first['count'],
+              'stars'    => stars_count.to_i,
               'headline' => post['content'].slice(0, 30 )
           })
       end
@@ -105,6 +102,19 @@ helpers do
               post_id
           ).first
       end
+  end
+
+  def get_star(post_id)
+      redis = redis_connection
+      star_count = redis.get("start_#{post_id}")
+      star_count = star_count ? star_count.to_i : 0
+
+      return star_count
+  end
+
+  def set_star(post_id,star_count)
+      redis = redis_connection
+      redis.set("start_#{post_id}", star_count)
   end
 
   def set_post_redis(post_id)
@@ -204,24 +214,19 @@ end
 
 get '/post/:id' do
   post_id = params[:id]
-  mysql = connection
 
   post = post_redis(post_id)
   if post.blank?
     halt 404, 'Not Found'
   end
 
-  stars_count = 0
-  stars_count = mysql.xquery(
-    'SELECT COUNT(id) as count FROM stars WHERE post_id=?',
-    post['id']
-  ).first['count']
+  stars_count = get_star(post_id)
 
   @post = {
     'id'         => post['id'],
     'content'    => post['content'],
     'username'   => post['username'],
-    'stars'      => stars_count,
+    'stars'      => stars_count.to_i,
     'created_at' => post['created_at']
   }
   @recent_posts = recent_posts_redis
@@ -250,6 +255,13 @@ post '/star/:id' do
     'INSERT INTO stars (post_id, user_id) VALUES(?, ?)',
     post_id, user_id
   )
+
+  stars_count = mysql.xquery(
+      'SELECT COUNT(id) as count FROM stars WHERE post_id=?',
+      post['id']
+  ).first['count']
+
+  set_star(post_id, stars_count)
 
   redirect to("/post/#{post_id}")
 end
