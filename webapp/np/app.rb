@@ -62,7 +62,7 @@ helpers do
     # created_at にindexはる
     mysql = connection
     posts = mysql.xquery(
-      "SELECT posts.id as id  , posts.user_id as user_id, posts.content as content, users.username as username FROM posts INNER JOIN users ON users.id = posts.user_id ORDER BY posts.created_at DESC LIMIT #{recent_posts_limit}"
+      "SELECT posts.id as id, posts.user_id as user_id, posts.content as content, users.username as username FROM posts INNER JOIN users ON users.id = posts.user_id ORDER BY posts.created_at DESC LIMIT #{recent_posts_limit}"
     )
 
     recent_posts = []
@@ -140,29 +140,23 @@ get '/post/:id' do
 
   mysql = connection
   post = mysql.xquery(
-    'SELECT id, user_id, content, created_at FROM posts WHERE id=?',
+    'SELECT posts.id as id, users.id as user_id, posts.content as content, posts.created_at as created_at, users.username as usernmae FROM posts INNER JOIN users ON users.id = posts.user_id WHERE posts.id=?',
     post_id
   ).first
   if post.blank?
     halt 404, 'Not Found'
   end
 
-  user = mysql.xquery(
-    'SELECT username FROM users WHERE id=?',
-    post['user_id']
-  ).first
-
   stars_count = 0
-  stars = mysql.xquery(
-    'SELECT * FROM stars WHERE post_id=?',
+  stars_count = mysql.xquery(
+    'SELECT COUNT(*) as count FROM stars WHERE post_id=?',
     post['id']
-  )
-  stars.each { stars_count += 1 }
+  ).first['count']
 
   @post = {
     'id'         => post['id'],
     'content'    => post['content'],
-    'username'   => user['username'],
+    'username'   => post['username'],
     'stars'      => stars_count,
     'created_at' => post['created_at']
   }
