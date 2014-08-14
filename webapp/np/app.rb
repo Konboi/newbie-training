@@ -149,7 +149,7 @@ post '/post' do
   )
 
   if result.has_error?
-    @recent_posts = recent_posts
+    @recent_posts = recent_posts_redis
     @errors = result.errors
     body = erb :index
     return HTML::FillinForm::Lite.new.fill(body, request)
