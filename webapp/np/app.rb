@@ -10,12 +10,6 @@ require 'html/fillinform/lite'
 
 set :erb, :escape_html => true
 
-configure do
-  set :session_secret, 'session secret'
-  enable :sessions
-  use Rack::Protection
-end
-
 helpers do
   def load_config
     {
@@ -45,25 +39,40 @@ helpers do
   end
 
   def recent_posts
-    recent_posts = [
-      {
-        'id'       => 1,
-        'username' => 'dummy user',
-        'stars'    => 10,
-        'headline' => 'dummy content hogehogehoggge',
-      }
-    ]
+    recent_posts_limit = load_config[:recent_posts_limit]
 
-    # -------------------------------------------------
-    # sidebar に表示する最新post一覧を生成してください
-    # 件数は最大 load_config[:recent_posts_limit]
-    # -------------------------------------------------
+    mysql = connection
+    posts = mysql.xquery(
+      "SELECT id, user_id, content FROM posts ORDER BY created_at DESC LIMIT #{recent_posts_limit}"
+    )
+
+    recent_posts = []
+    posts.each do |post|
+      user = mysql.xquery(
+        'SELECT username FROM users WHERE id=?',
+        post['user_id']
+      ).first
+
+      stars_count = 0
+      stars = mysql.xquery(
+        'SELECT * FROM stars WHERE post_id=?',
+        post['id']
+      )
+      stars.each { stars_count += 1 }
+
+      recent_posts.push({
+        'id'       => post['id'],
+        'username' => user['username'],
+        'stars'    => stars_count,
+        'headline' => post['content'].slice(0, 30)
+      })
+    end
 
     recent_posts
   end
 
   def u(str)
-    URI.escape(str)
+    URI.escape(str.to_s)
   end
 
 end
@@ -117,16 +126,33 @@ end
 get '/post/:id' do
   post_id = params[:id]
 
-  # ------------------------------------
-  # postを表示する機能を実装してください
-  # ------------------------------------
+  mysql = connection
+  post = mysql.xquery(
+    'SELECT id, user_id, content, created_at FROM posts WHERE id=?',
+    post_id
+  ).first
+  if post.blank?
+    halt 404, 'Not Found'
+  end
+
+  user = mysql.xquery(
+    'SELECT username FROM users WHERE id=?',
+    post['user_id']
+  ).first
+
+  stars_count = 0
+  stars = mysql.xquery(
+    'SELECT * FROM stars WHERE post_id=?',
+    post['id']
+  )
+  stars.each { stars_count += 1 }
 
   @post = {
-    'id'         => post_id,
-    'content'    => "dummy content\nfoo\nbar",
-    'username'   => 'dummy user',
-    'stars'      => 10,
-    'created_at' => '2013-04-10 15:26:40',
+    'id'         => post['id'],
+    'content'    => post['content'],
+    'username'   => user['username'],
+    'stars'      => stars_count,
+    'created_at' => post['created_at']
   }
   @recent_posts = recent_posts
 
@@ -175,10 +201,17 @@ post '/signin' do
   username = params[:username]
   password = params[:password]
 
-  # -----------------------------
-  # ログイン処理を入れてください
-  # -----------------------------
-  success = true
+  mysql = connection
+  user = mysql.xquery(
+    'SELECT password FROM users WHERE username=?',
+    username
+  ).first
+
+  success = user.present?
+  if success
+    crypt   = BCrypt::Password.new(user['password'])
+    success = (crypt == password)
+  end
 
   if success
     # ログインに成功した場合
@@ -205,11 +238,20 @@ post '/signup' do
   password = params[:password]
 
   validator = FormValidator::Lite.new(request)
-  # --------------------------------------
-  # 入力の validate 処理を入れてください
-  # username: 必須 2文字以上20文字以下 半角アルファベットと数字のみ
-  # password: 必須 2文字以上20文字以下 ASCII のみ
-  # --------------------------------------
+  result = validator.check(
+    'username', [%w(NOT_NULL), ['REGEXP', /\A[a-zA-Z0-9]{2,20}\z/]],
+    'password', [%w(NOT_NULL ASCII), %w(LENGTH 2 20)],
+    { 'password' => %w(password password_confirm) }, ['DUPLICATION']
+  )
+
+  mysql = connection
+  user_count = mysql.xquery(
+    'SELECT count(*) AS c FROM users WHERE username=?',
+    username
+  ).first['c']
+  if user_count > 0
+    validator.set_error('username', 'EXISTS')
+  end
 
   # validationでエラーが起きたらフォームを再表示
   if validator.has_error?
@@ -218,11 +260,12 @@ post '/signup' do
     return HTML::FillinForm::Lite.new.fill(body, request)
   end
 
+  salted = BCrypt::Password.create(password).to_s
+
   # validationを通ったのでユーザを作成
-  mysql = connection
   mysql.xquery(
     'INSERT INTO users (username, password) VALUES (?, ?)',
-    username, password
+    username, salted
   )
 
   session[:username] = username
