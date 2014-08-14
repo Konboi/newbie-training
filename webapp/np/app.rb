@@ -68,14 +68,14 @@ helpers do
     recent_posts = []
     posts.each do |post|
       stars_count = mysql.xquery(
-        'SELECT COUNT(*) FROM stars WHERE post_id=?',
+        'SELECT COUNT(id) as count FROM stars WHERE post_id=?',
         post['id']
       )
 
       recent_posts.push({
         'id'       => post['id'],
         'username' => post['username'],
-        'stars'    => stars_count,
+        'stars'    => stars_count.first['count'],
         'headline' => post['content'].slice(0, 30)
       })
     end
