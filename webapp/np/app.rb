@@ -92,6 +92,33 @@ helpers do
       return 1
   end
 
+  def post_redis(post_id)
+      redis = redis_connection
+      post = redis.get(post_id)
+
+      if post then
+          post = JSON.parse(post)
+      else
+          mysql = connection
+          post = mysql.xquery(
+              'SELECT posts.id as id, users.id as user_id, posts.content as content, posts.created_at as created_at, users.username as usernmae FROM posts INNER JOIN users ON users.id = posts.user_id WHERE posts.id=?',
+              post_id
+          ).first
+      end
+  end
+
+  def set_post_redis(post_id)
+      redis = redis_connection
+
+      mysql = connection
+      post = mysql.xquery(
+          'SELECT posts.id as id, users.id as user_id, posts.content as content, posts.created_at as created_at, users.username as usernmae FROM posts INNER JOIN users ON users.id = posts.user_id WHERE posts.id=?',
+          post_id
+      ).first
+
+      redis.set(post_id, post.to_json)
+  end
+
   def recent_posts
     recent_posts_limit = load_config[:recent_posts_limit]
 
@@ -168,6 +195,8 @@ post '/post' do
     user_id, content
   )
   post_id = mysql.last_id
+
+  set_post_redis(post_id)
   recent_posts_set_redis
 
   redirect to("/post/#{post_id}")
@@ -175,12 +204,9 @@ end
 
 get '/post/:id' do
   post_id = params[:id]
-
   mysql = connection
-  post = mysql.xquery(
-    'SELECT posts.id as id, users.id as user_id, posts.content as content, posts.created_at as created_at, users.username as usernmae FROM posts INNER JOIN users ON users.id = posts.user_id WHERE posts.id=?',
-    post_id
-  ).first
+
+  post = post_redis(post_id)
   if post.blank?
     halt 404, 'Not Found'
   end
@@ -211,10 +237,7 @@ post '/star/:id' do
 
   post_id = params[:id]
   mysql = connection
-  post = mysql.xquery(
-    'SELECT id, user_id, content, created_at FROM posts WHERE id=?',
-    post_id
-  ).first
+  post = post_redis(post_id)
   halt 404, '404 Not Found' unless post
 
   user = mysql.xquery(
