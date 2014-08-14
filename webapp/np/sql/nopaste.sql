@@ -4,7 +4,6 @@ CREATE TABLE `users` (
   `username` varchar(255) NOT NULL,
   `password` varchar(255) NOT NULL,
   UNIQUE KEY `username_uniq_idx` (`username`),
-  PRIMARY KEY (`id`)
 ) CHARACTER SET utf8 ENGINE=InnoDB;
 
 DROP TABLE IF EXISTS `posts`;
