@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 require 'sinatra'
 require 'sinatra/url_for'
 require 'erubis'
@@ -41,6 +42,8 @@ helpers do
   def recent_posts
     recent_posts_limit = load_config[:recent_posts_limit]
 
+    ## TODO
+    # created_at にindexはる
     mysql = connection
     posts = mysql.xquery(
       "SELECT id, user_id, content FROM posts ORDER BY created_at DESC LIMIT #{recent_posts_limit}"
