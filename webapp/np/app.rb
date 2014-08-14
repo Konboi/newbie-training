@@ -117,6 +117,7 @@ helpers do
   def set_star(post_id,star_count)
       redis = redis_connection
       redis.set("start_#{post_id}", star_count)
+      redis.expire("start_#{post_id}", 0.5)
   end
 
   def set_post_redis(post_id)
