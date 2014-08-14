@@ -87,7 +87,6 @@ helpers do
 
       redis = redis_connection
       redis.set('recent_post', recent_posts.to_json)
-
       return 1
   end
 
@@ -108,8 +107,18 @@ helpers do
 
   def get_star(post_id)
       redis = redis_connection
+      mysql = connection
+
       star_count = redis.get("start_#{post_id}")
-      star_count = star_count ? star_count.to_i : 0
+
+      if star_count then
+        star_count = star_count.to_i
+      else
+        star_count = mysql.xquery(
+          'SELECT COUNT(id) as count FROM stars WHERE post_id=?',
+          post_id
+        ).first['count']
+      end
 
       return star_count
   end
@@ -117,7 +126,6 @@ helpers do
   def set_star(post_id,star_count)
       redis = redis_connection
       redis.set("start_#{post_id}", star_count)
-      redis.expire("start_#{post_id}", 1)
   end
 
   def set_post_redis(post_id)
@@ -253,6 +261,10 @@ post '/star/:id' do
     username
   ).first
   user_id = user['id']
+
+  redis = redis_connection
+  redis.del('recent_post')
+  redis.del('start_#{post_id}')
 
   mysql.xquery(
     'INSERT INTO stars (post_id, user_id) VALUES(?, ?)',
